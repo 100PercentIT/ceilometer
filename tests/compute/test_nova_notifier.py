@@ -34,6 +34,7 @@ except ImportError:
     nova_CONF = flags.FLAGS
 from nova import db
 from nova import context
+from nova import service  # For nova_CONF.compute_manager
 from nova.tests import fake_network
 from nova.compute import vm_states
 # Needed for flags option, but Essex does not have it
@@ -43,7 +44,6 @@ except ImportError:
     notifier_api = None
 
 
-from ceilometer import publish
 from ceilometer import counter
 from ceilometer.tests import base
 from ceilometer.tests import skip
@@ -85,11 +85,13 @@ class TestNovaNotifier(base.TestCase):
     def fake_db_instance_system_metadata_get(context, uuid):
         return dict(meta_a=123, meta_b="foobar")
 
+    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     @skip.skip_unless(notifier_api, "Notifier API not found")
     def setUp(self):
         super(TestNovaNotifier, self).setUp()
         nova_CONF.compute_driver = 'nova.virt.fake.FakeDriver'
         nova_CONF.notification_driver = [nova_notifier.__name__]
+        nova_CONF.rpc_backend = 'ceilometer.openstack.common.rpc.impl_fake'
         self.compute = importutils.import_object(nova_CONF.compute_manager)
         self.context = context.get_admin_context()
         fake_network.set_stub_network_methods(self.stubs)
@@ -119,7 +121,8 @@ class TestNovaNotifier(base.TestCase):
                          "access_ip_v4": "someip",
                          "access_ip_v6": "someip",
                          "metadata": {},
-                         "uuid": "144e08f4-00cb-11e2-888e-5453ed1bbb5f"}
+                         "uuid": "144e08f4-00cb-11e2-888e-5453ed1bbb5f",
+                         "system_metadata": {}}
         self.stubs.Set(db, 'instance_info_cache_delete', self.do_nothing)
         self.stubs.Set(db, 'instance_destroy', self.do_nothing)
         self.stubs.Set(db, 'instance_system_metadata_get',
@@ -130,9 +133,8 @@ class TestNovaNotifier(base.TestCase):
                        lambda context, uuid, kwargs: (self.instance,
                                                       self.instance))
 
-        self.stubs.Set(publish, 'publish_counter', self.do_nothing)
         agent_manager = manager.AgentManager()
-        agent_manager.ext_manager = \
+        agent_manager.pollster_manager = \
             test_manager.TestExtensionManager([
                 extension.Extension('test',
                                     None,
@@ -166,16 +168,13 @@ class TestNovaNotifier(base.TestCase):
             # the nova manager and the remote system since we can't
             # expect the message bus to be available, or the remote
             # controller to be there if the message bus is online.
-            @mock.patch.object(nova.conductor.api.API,
-                               'block_device_mapping_get_all_by_instance',
-                               lambda obj, context, instance: {})
+            @mock.patch.object(self.compute, 'conductor_api')
+            # The code that looks up the instance uses a global
+            # reference to the API, so we also have to patch that to
+            # return our fake data.
             @mock.patch.object(nova.conductor.api.API,
                                'instance_get_by_uuid',
                                self.fake_db_instance_get)
-            @mock.patch('nova.conductor.api.API.instance_info_cache_delete')
-            @mock.patch('nova.conductor.api.API.instance_destroy')
-            @mock.patch('nova.conductor.api.API.block_device_mapping_destroy')
-            @mock.patch('nova.conductor.api.API.instance_update')
             def run_test(*omit_args):
                 self.compute.terminate_instance(self.context,
                                                 instance=self.instance)

@@ -91,7 +91,9 @@ from ceilometer.api.v1 import acl
 LOG = log.getLogger(__name__)
 
 
-blueprint = flask.Blueprint('v1', __name__)
+blueprint = flask.Blueprint('v1', __name__,
+                            template_folder='templates',
+                            static_folder='static')
 
 
 def request_wants_html():
@@ -120,7 +122,8 @@ def check_authorized_project(project):
 @blueprint.route('/meters')
 def list_meters_all():
     """Return a list of meters.
-    :param metadata.<key> match on the metadata within the resource. (optional)
+    :param metadata.<key>: match on the metadata within the resource.
+                           (optional)
     """
     rq = flask.request
     meters = rq.storage_conn.get_meters(
@@ -134,7 +137,8 @@ def list_meters_by_resource(resource):
     """Return a list of meters by resource.
 
     :param resource: The ID of the resource.
-    :param metadata.<key> match on the metadata within the resource. (optional)
+    :param metadata.<key>: match on the metadata within the resource.
+                           (optional)
     """
     rq = flask.request
     meters = rq.storage_conn.get_meters(
@@ -149,7 +153,8 @@ def list_meters_by_user(user):
     """Return a list of meters by user.
 
     :param user: The ID of the owning user.
-    :param metadata.<key> match on the metadata within the resource. (optional)
+    :param metadata.<key>: match on the metadata within the resource.
+                           (optional)
     """
     rq = flask.request
     meters = rq.storage_conn.get_meters(
@@ -164,7 +169,8 @@ def list_meters_by_project(project):
     """Return a list of meters by project.
 
     :param project: The ID of the owning project.
-    :param metadata.<key> match on the metadata within the resource. (optional)
+    :param metadata.<key>: match on the metadata within the resource.
+                           (optional)
     """
     check_authorized_project(project)
 
@@ -180,7 +186,8 @@ def list_meters_by_source(source):
     """Return a list of meters by source.
 
     :param source: The ID of the owning source.
-    :param metadata.<key> match on the metadata within the resource. (optional)
+    :param metadata.<key>: match on the metadata within the resource.
+                           (optional)
     """
     rq = flask.request
     meters = rq.storage_conn.get_meters(
@@ -219,7 +226,8 @@ def list_resources_by_project(project):
     :param end_timestamp: Limits resources by last update time < this value.
         (optional)
     :type end_timestamp: ISO date in UTC
-    :param metadata.<key> match on the metadata within the resource. (optional)
+    :param metadata.<key>: match on the metadata within the resource.
+                           (optional)
     """
     check_authorized_project(project)
     return _list_resources(project=project)
@@ -235,7 +243,8 @@ def list_all_resources():
     :param end_timestamp: Limits resources by last update time < this value.
         (optional)
     :type end_timestamp: ISO date in UTC
-    :param metadata.<key> match on the metadata within the resource. (optional)
+    :param metadata.<key>: match on the metadata within the resource.
+                           (optional)
     """
     return _list_resources(
         project=acl.get_limited_to_project(flask.request.headers))
@@ -262,7 +271,8 @@ def list_resources_by_source(source):
     :param end_timestamp: Limits resources by last update time < this value.
         (optional)
     :type end_timestamp: ISO date in UTC
-    :param metadata.<key> match on the metadata within the resource. (optional)
+    :param metadata.<key>: match on the metadata within the resource.
+                           (optional)
     """
     return _list_resources(
         source=source,
@@ -281,7 +291,8 @@ def list_resources_by_user(user):
     :param end_timestamp: Limits resources by last update time < this value.
         (optional)
     :type end_timestamp: ISO date in UTC
-    :param metadata.<key> match on the metadata within the resource. (optional)
+    :param metadata.<key>: match on the metadata within the resource.
+                           (optional)
     """
     return _list_resources(
         user=user,

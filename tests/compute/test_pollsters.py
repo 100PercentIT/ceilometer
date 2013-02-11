@@ -51,6 +51,7 @@ class TestInstancePollster(TestPollsterBase):
     def setUp(self):
         super(TestInstancePollster, self).setUp()
 
+    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def test_get_counters(self):
         self.mox.ReplayAll()
 
@@ -67,6 +68,7 @@ class TestDiskIOPollster(TestPollsterBase):
     def setUp(self):
         super(TestDiskIOPollster, self).setUp()
 
+    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def test_get_counters(self):
         disks = [
             (virt_inspector.Disk(device='vda'),
@@ -81,6 +83,9 @@ class TestDiskIOPollster(TestPollsterBase):
         pollster = pollsters.DiskIOPollster()
         counters = list(pollster.get_counters(mgr, self.instance))
         assert counters
+
+        self.assertEqual(set([c.name for c in counters]),
+                         set(pollster.get_counter_names()))
 
         def _verify_disk_metering(name, expected_volume):
             match = [c for c in counters if c.name == name]
@@ -99,6 +104,7 @@ class TestNetPollster(TestPollsterBase):
     def setUp(self):
         super(TestNetPollster, self).setUp()
 
+    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def test_get_counters(self):
         vnic0 = virt_inspector.Interface(
             name='vnet0',
@@ -129,6 +135,8 @@ class TestNetPollster(TestPollsterBase):
         pollster = pollsters.NetPollster()
         counters = list(pollster.get_counters(mgr, self.instance))
         assert counters
+        self.assertEqual(set([c.name for c in counters]),
+                         set(pollster.get_counter_names()))
 
         def _verify_vnic_metering(name, ip, expected_volume):
             match = [c for c in counters if c.name == name and
@@ -152,6 +160,7 @@ class TestCPUPollster(TestPollsterBase):
     def setUp(self):
         super(TestCPUPollster, self).setUp()
 
+    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def test_get_counters(self):
         self.inspector.inspect_cpus(self.instance.name).AndReturn(
             virt_inspector.CPUStats(time=1 * (10 ** 6), number=2))
@@ -168,6 +177,8 @@ class TestCPUPollster(TestPollsterBase):
         def _verify_cpu_metering(zero, expected_time):
             counters = list(pollster.get_counters(mgr, self.instance))
             self.assertEquals(len(counters), 2)
+            self.assertEqual(set([c.name for c in counters]),
+                             set(pollster.get_counter_names()))
             assert counters[0].name == 'cpu_util'
             assert (counters[0].volume == 0.0 if zero else
                     counters[0].volume > 0.0)

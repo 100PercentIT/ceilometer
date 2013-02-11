@@ -16,6 +16,8 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import mock
+
 from ceilometer.tests import base
 from ceilometer.image import glance
 from ceilometer.central import manager
@@ -83,22 +85,29 @@ IMAGE_LIST = [
 ]
 
 
+class TestManager(manager.AgentManager):
+
+    def __init__(self):
+        super(TestManager, self).__init__()
+        self.keystone = None
+
+
 class TestImagePollster(base.TestCase):
 
     @staticmethod
-    def fake_glance_iter_images(foobar):
+    def fake_glance_iter_images(self, ksclient):
         return iter(IMAGE_LIST)
 
+    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def setUp(self):
         super(TestImagePollster, self).setUp()
         self.context = context.get_admin_context()
-        self.manager = manager.AgentManager()
+        self.manager = TestManager()
         self.stubs.Set(glance._Base, 'iter_images',
                        self.fake_glance_iter_images)
 
     def test_glance_image_counter(self):
-        counters = list(glance.ImagePollster().get_counters(self.manager,
-                                                            self.context))
+        counters = list(glance.ImagePollster().get_counters(self.manager))
         self.assertEqual(len(counters), 6)
         for counter in [c for c in counters if c.name == 'image']:
             self.assertEqual(counter.volume, 1)
@@ -106,3 +115,8 @@ class TestImagePollster(base.TestCase):
             self.assert_(
                 any(map(lambda counter: counter.volume == image.size,
                         counters)))
+
+    def test_get_counter_names(self):
+        counters = list(glance.ImagePollster().get_counters(self.manager))
+        self.assertEqual(set([c.name for c in counters]),
+                         set(glance.ImagePollster().get_counter_names()))
