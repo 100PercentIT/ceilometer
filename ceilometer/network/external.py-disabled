@@ -1,0 +1,83 @@
+#!/usr/bin/python
+
+import os
+import subprocess
+import sys
+import csv
+
+import ast
+import re
+
+URL="http://localhost:5000/v2.0/"
+USERNAME="admin"
+PASSWORD="openstack"
+TENANT="admin"
+
+
+def main():
+
+ # Get a list of external networks, build an array of the external subnets using called ext_nets
+ ext_nets_proc = subprocess.Popen(['quantum', '--os-auth-url', URL, '--os-username', USERNAME, '--os-password', PASSWORD, '--os-tenant-name', TENANT,
+                                                'net-external-list', '-F', 'subnets', '-f', 'csv'], bufsize=-1, stdout=subprocess.PIPE)
+ stdout, _ = ext_nets_proc.communicate()
+ if ext_nets_proc.returncode == 0:
+  ext_nets = stdout.replace("\"", "")
+  ext_nets = re.sub(" .*", "", ext_nets)
+  ext_nets = ext_nets.split("\n")[1:-1]
+  #print ext_nets
+
+ # Get a list of routers, build an array of routers ID's called router_list
+ routers_proc = subprocess.Popen(['quantum', '--os-auth-url', URL, '--os-username', USERNAME, '--os-password', PASSWORD, '--os-tenant-name', TENANT,
+                                                'router-list', '-F', 'id', '-F', 'external_gateway_info', '-f', 'csv'], bufsize=-1, stdout=subprocess.PIPE)
+ stdout, _ = routers_proc.communicate()
+ router_list = []
+ if routers_proc.returncode == 0:
+  routers = csv.DictReader(stdout.split("\n"))
+  for routers_row in routers:
+   router_list.append(routers_row['id'])
+ #print router_list
+
+ # For each router ID in the array router_list get the routers Tenant ID, Network ID and Subnets. Build an array with Network ID, Router ID, Subnet ID, Tenant ID called router_details
+ for router_id in router_list:
+  router_details_proc = subprocess.Popen(['quantum', '--os-auth-url', URL, '--os-username', USERNAME, '--os-password', PASSWORD, '--os-tenant-name', TENANT,
+                                                'router-show', '-F', 'id', '-F', 'tenant_id', '-F', 'external_gateway_info', '-f', 'shell', router_id], bufsize=-1, stdout=subprocess.PIPE)
+  stdout, _ = router_details_proc.communicate()
+  if router_details_proc.returncode == 0:
+   router_details = stdout.replace("\"", "")
+   router_details = re.sub(".*=", "", router_details)
+   router_details = re.sub("{network_id:\ ", "", router_details)
+   router_details = re.sub("}", "", router_details)
+   router_details = router_details.split("\n")[:-1]
+   #print router_details
+
+  # Using the router ID again, get the routers Port ID, Mac and subnet. If the subnet matches one of the subnets the ext_nets array add the corresponding mac address into the array router_details
+  port_list_proc = subprocess.Popen(['quantum', '--os-auth-url', URL, '--os-username', USERNAME, '--os-password', PASSWORD, '--os-tenant-name', TENANT,                                                                                     'router-port-list', '-F', 'mac_address', '-F', 'fixed_ips', '-F', 'id', '-f', 'csv', router_id], bufsize=-1, stdout=subprocess.PIPE)
+  stdout, _ = port_list_proc.communicate()
+  if port_list_proc.returncode == 0:
+   port_list = csv.DictReader(stdout.split("\n"))
+   for port_details in port_list:
+    if ast.literal_eval(port_details['fixed_ips'])['subnet_id'] in ext_nets:
+     router_details.append(port_details['mac_address'])
+     #print router_details
+
+
+     # For every row in router_details run `ip netns exec qrouter-$router-id ifconfig | grep mac_address -A 7 | egrep -o '(RX|TX) (packets|bytes):[0-9]+'`
+     # Build an array called usage_array. Ordered RX Bytes, TX Bytes, RX Packets, TX Packets
+     # Output in the format Tenant/Project ID: $tenant,Resource ID (network): $net_id,$output
+     ifconfig_proc = subprocess.Popen(["ip netns exec qrouter-" + router_details[1] + " ifconfig | grep '" + router_details[3] + "' -A 7 | egrep -o '(RX|TX) (packets|bytes):[0-9]+'"],                                                     bufsize=-1, stdout=subprocess.PIPE, shell=True)
+     stdout, _ = ifconfig_proc.communicate()
+     if ifconfig_proc.returncode == 0:
+          usage_array = stdout.split('\n')
+          RX_P = usage_array[0]
+          TX_P = usage_array[1]
+          RX_B = usage_array[2]
+          TX_B = usage_array[3]
+          print 'Tenant/Project ID: ' + router_details[2] + ',' + 'Resource ID (network): ' + router_details[0] + ',' + RX_P
+          print "Tenant/Project ID: " + router_details[2] + ',' + 'Resource ID (network): ' + router_details[0] + ',' + TX_P
+          print "Tenant/Project ID: " + router_details[2] + ',' + 'Resource ID (network): ' + router_details[0] + ',' + RX_B
+          print "Tenant/Project ID: " + router_details[2] + ',' + 'Resource ID (network): ' + router_details[0] + ',' + TX_B
+
+
+
+if __name__ == "__main__":
+    main()
