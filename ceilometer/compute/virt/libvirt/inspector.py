@@ -18,6 +18,7 @@
 """Implementation of Inspector abstraction for libvirt"""
 
 from lxml import etree
+import subprocess
 
 from ceilometer.compute.virt import inspector as virt_inspector
 from ceilometer.openstack.common import cfg
@@ -98,6 +99,13 @@ class LibvirtInspector(virt_inspector.Inspector):
                 except libvirt.libvirtError:
                     # Instance was deleted while listing... ignore it
                     pass
+
+    def inspect_mem(self, instance_name):
+        domain = self._lookup_by_name(instance_name)
+        ifconfig_proc = subprocess.Popen(['sudo virsh qemu-monitor-command ' + instance_name + ' \'{ "execute": "qom-get", "arguments": { "path": "/machine/peripheral/balloon0", "property": "guest-stats" } }\'' ],                                                                                             bufsize=-1, stdout=subprocess.PIPE, shell=True)
+        stdout, _ = ifconfig_proc.communicate()
+        if ifconfig_proc.returncode == 0:
+            return stdout
 
     def inspect_cpus(self, instance_name):
         domain = self._lookup_by_name(instance_name)
