@@ -77,6 +77,8 @@ DiskStats = collections.namedtuple('DiskStats',
                                    ['read_bytes', 'read_requests',
                                     'write_bytes', 'write_requests',
                                     'errors'])
+                                    
+MEMStats = collections.namedtuple('MEMStats', ['free_memory'])
 
 
 # Exception types
@@ -126,5 +128,14 @@ class Inspector(object):
         :param instance_name: the name of the target instance
         :return: for each disk, the number of bytes & operations
                  read and written, and the error count
+        """
+        raise NotImplementedError()
+        
+    def inspect_mem(self, instance_name):
+        """
+        Inspect the memory statistics for an instance.
+
+        :param instance_name: the name of the target instance
+        :return: total free memory in bits
         """
         raise NotImplementedError()
