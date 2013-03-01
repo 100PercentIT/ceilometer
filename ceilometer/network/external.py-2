@@ -9,7 +9,7 @@ from quantumclient.v2_0 import client as quantum_client
 from keystoneclient.v2_0 import client as ksclient
 from ceilometer.openstack.common import cfg
 
-import os, subprocess, sys, csv
+import os, subprocess, sys, csv, datetime
 
 class _Base(plugin.CentralPollster):
 
@@ -62,16 +62,21 @@ class _Base(plugin.CentralPollster):
                     for port in ports:
                         if port['fixed_ips'][0]['subnet_id'] in router_dict['subnets'] and port['device_id'] == router_dict['router_id']:
                             router_dict['mac_address'] = port['mac_address']
+                            router_dict['port_id'] = port['id']
                             router_table.append(router_dict)
-                            return router_table
+        return router_table
 
 
     def ifconfig(self, details):
         ifconfig_proc = subprocess.Popen(["sudo ip netns exec qrouter-" + details['router_id'] + " ifconfig | grep '" + details['mac_address'] + "' -A 7 | egrep -o '(RX|TX) (packets|bytes):[0-9]+' | egrep -o '[0-9]+'"],                                                                                             bufsize=-1, stdout=subprocess.PIPE, shell=True)
         stdout, _ = ifconfig_proc.communicate()
         if ifconfig_proc.returncode == 0:
-             usage_array = stdout.split('\n')
-        return usage_array[:-1]
+            usage_array = stdout.split('\n')
+            return usage_array[:-1]
+        else:
+            print 'Panic'
+            print details
+
 
     def get_external(self):
         x = self.build_table()
@@ -85,7 +90,24 @@ class _Base(plugin.CentralPollster):
             a.append(i)
         return a
 
+    def cache_results(self, y):
+        writer = csv.writer(open('/tmp/' + y['router_id']  + '.externalbw.cache', 'wb'))
+        for key, value in y.items():
+            writer.writerow([key, value])
 
+    def get_cache(self, router_id):
+        try:
+            with open('/tmp/' + router_id + '.externalbw.cache', 'rb') as r:
+                st = os.stat('/tmp/' + router_id + '.externalbw.cache')
+                mtime = st.st_mtime
+                dtime = datetime.datetime.fromtimestamp(mtime)
+                if timeutils.is_older_than(dtime, 1260) == True:
+                    return None
+                reader = csv.reader(r)
+                prev = dict(x for x in reader)
+                return prev
+        except IOError as e:
+            return None
 
 class ExternalBWPollster(_Base):
 
@@ -96,49 +118,52 @@ class ExternalBWPollster(_Base):
         return ['ip.externalbw']
 
 
-    def get_counters(self, manager, context):
+    def get_counters(self, manager):
         for y in self.get_external():
-               yield counter.Counter(
-                   name='ip.extbw.rx.packets',
-                   type=counter.TYPE_CUMULATIVE,
-                   volume=y['RX Packets'],
-                   unit='packets',
-                   user_id=None,
-                   project_id=y['tenant_id'],
-                   resource_id=y['network_id'],
-                   timestamp=timeutils.isotime(),
-                   resource_metadata=None,
-                   )
-               yield counter.Counter(
-                   name='ip.extbw.tx.packets',
-                   type=counter.TYPE_CUMULATIVE,
-                   volume=y['TX Packets'],
-                   unit='packets',
-                   user_id=None,
-                   project_id=y['tenant_id'],
-                   resource_id=y['network_id'],
-                   timestamp=timeutils.isotime(),
-                   resource_metadata=None,
-                   )
-               yield counter.Counter(
-                   name='ip.extbw.rx.bytes',
-                   type=counter.TYPE_CUMULATIVE,
-                   volume=y['RX Bytes'],
-                   unit='B',
-                   user_id=None,
-                   project_id=y['tenant_id'],
-                   resource_id=y['network_id'],
-                   timestamp=timeutils.isotime(),
-                   resource_metadata=None,
-                   )
-               yield counter.Counter(
-                   name='ip.extbw.tx.bytes',
-                   type=counter.TYPE_CUMULATIVE,
-                   volume=y['TX Bytes'],
-                   unit='B',
-                   user_id=None,
-                   project_id=y['tenant_id'],
-                   resource_id=y['network_id'],
-                   timestamp=timeutils.isotime(),
-                   resource_metadata=None,
-                   )
+               prev = self.get_cache(y['router_id'])
+               cache = self.cache_results(y)
+               if prev != None:
+                   yield counter.Counter(
+                       name='ip.extbw.rx.packets',
+                       type=counter.TYPE_DELTA,
+                       volume=int(y['RX Packets']) - int(prev['RX Packets']),
+                       unit='packets',
+                       user_id=None,
+                       project_id=y['tenant_id'],
+                       resource_id=y['port_id'],
+                       timestamp=timeutils.isotime(),
+                       resource_metadata={},
+                       )
+                   yield counter.Counter(
+                       name='ip.extbw.tx.packets',
+                       type=counter.TYPE_DELTA,
+                       volume=int(y['TX Packets']) - int(prev['TX Packets']),
+                       unit='packets',
+                       user_id=None,
+                       project_id=y['tenant_id'],
+                       resource_id=y['port_id'],
+                       timestamp=timeutils.isotime(),
+                       resource_metadata={},
+                       )
+                   yield counter.Counter(
+                       name='ip.extbw.rx.bytes',
+                       type=counter.TYPE_DELTA,
+                       volume=int(y['RX Bytes']) - int(prev['RX Bytes']),
+                       unit='B',
+                       user_id=None,
+                       project_id=y['tenant_id'],
+                       resource_id=y['port_id'],
+                       timestamp=timeutils.isotime(),
+                       resource_metadata={},
+                       )
+                   yield counter.Counter(
+                       name='ip.extbw.tx.bytes',
+                       type=counter.TYPE_DELTA,
+                       volume=int(y['TX Bytes']) - int(prev['TX Bytes']),
+                       unit='B',
+                       user_id=None,
+                       project_id=y['tenant_id'],
+                       resource_id=y['port_id'],
+                       timestamp=timeutils.isotime(),
+                       resource_metadata={},
+                       )
