@@ -20,6 +20,7 @@
 
 import copy
 import datetime
+import ast
 
 from ceilometer import counter
 from ceilometer.compute import plugin
@@ -193,6 +194,46 @@ class CPUPollster(plugin.ComputePollster):
                                              )
         except Exception as err:
             self.LOG.error('could not get CPU time for %s: %s',
+                           instance.id, err)
+            self.LOG.exception(err)
+
+
+class MEMPollster(plugin.ComputePollster):
+
+    LOG = log.getLogger(__name__ + '.mem')
+
+    @staticmethod
+    def make_mem_counter(instance, name, type, unit, volume):
+        return counter.Counter(
+            name=name,
+            type=type,
+            unit=unit,
+            volume=volume,
+            user_id=instance.user_id,
+            project_id=instance.tenant_id,
+            resource_id=instance.id,
+            timestamp=timeutils.isotime(),
+            resource_metadata={}
+        )
+
+    def get_counters(self, manager, instance):
+        self.LOG.info('checking instance %s', instance.id)
+        instance_name = _instance_name(instance)
+        try:
+            mem_info = manager.inspector.inspect_mem(instance_name)
+            mem_info = ast.literal_eval(mem_info)
+            if mem_info['return']:
+                if mem_info['return']['stats']:
+                    if mem_info['return']['stats']['stat-free-memory']:
+                        yield self.make_mem_counter(instance,
+                                         name='memory.free',
+                                         type=counter.TYPE_CUMULATIVE,
+                                         unit='b',
+                                         volume=mem_info['return']['stats']['stat-free-memory'],
+                                         )
+
+        except Exception as err:
+            self.LOG.error('could not get MEM Stats for %s: %s',
                            instance.id, err)
             self.LOG.exception(err)
 
