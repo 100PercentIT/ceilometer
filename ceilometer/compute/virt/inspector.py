@@ -149,6 +149,14 @@ class Inspector(object):
         """
         raise NotImplementedError()
 
+    def inspect_mem(self, instance_name):
+        """
+        Inspect the memory statistics for an instance.
+
+        :param instance_name: the name of the target instance
+        :return: total free memory in bits
+        """
+        raise NotImplementedError()
 
 def get_hypervisor_inspector():
     try:
