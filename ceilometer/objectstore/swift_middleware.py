@@ -20,13 +20,14 @@
 
 from __future__ import absolute_import
 
+from oslo.config import cfg
 from stevedore import dispatch
 
 from ceilometer import counter
-from ceilometer.openstack.common import cfg
 from ceilometer.openstack.common import context
 from ceilometer.openstack.common import timeutils
 from ceilometer import pipeline
+from ceilometer import service
 
 from swift.common.utils import split_path
 
@@ -51,7 +52,7 @@ class CeilometerMiddleware(object):
 
     def __init__(self, app, conf):
         self.app = app
-        cfg.CONF([], project='ceilometer')
+        service.prepare_service()
         publisher_manager = dispatch.NameDispatchExtensionManager(
             namespace=pipeline.PUBLISHER_NAMESPACE,
             check_func=lambda x: True,
@@ -94,11 +95,13 @@ class CeilometerMiddleware(object):
         req = Request(env)
         version, account, container, obj = split_path(req.path, 1, 4, True)
         now = timeutils.utcnow().isoformat()
-
-        if bytes_received:
-            self.pipeline_manager.publish_counter(
+        with pipeline.PublishContext(
                 context.get_admin_context(),
-                counter.Counter(
+                cfg.CONF.counter_source,
+                self.pipeline_manager.pipelines,
+        ) as publisher:
+            if bytes_received:
+                publisher([counter.Counter(
                     name='storage.objects.incoming.bytes',
                     type='delta',
                     unit='B',
@@ -112,13 +115,10 @@ class CeilometerMiddleware(object):
                         "version": version,
                         "container": container,
                         "object": obj,
-                    }, ),
-                cfg.CONF.counter_source)
+                    })])
 
-        if bytes_sent:
-            self.pipeline_manager.publish_counter(
-                context.get_admin_context(),
-                counter.Counter(
+            if bytes_sent:
+                publisher([counter.Counter(
                     name='storage.objects.outgoing.bytes',
                     type='delta',
                     unit='B',
@@ -132,8 +132,7 @@ class CeilometerMiddleware(object):
                         "version": version,
                         "container": container,
                         "object": obj,
-                    }),
-                cfg.CONF.counter_source)
+                    })])
 
 
 def filter_factory(global_conf, **local_conf):

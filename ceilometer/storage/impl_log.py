@@ -48,6 +48,9 @@ class Connection(base.Connection):
     def upgrade(self, version=None):
         pass
 
+    def clear(self):
+        pass
+
     def record_metering_data(self, data):
         """Write the data to the backend storage system.
 
@@ -131,7 +134,7 @@ class Connection(base.Connection):
         matching the event_filter.
         """
 
-    def get_meter_statistics(self, event_filter):
+    def get_meter_statistics(self, event_filter, period=None):
         """Return a dictionary containing meter statistics.
         described by the query parameters.
 
@@ -142,6 +145,9 @@ class Connection(base.Connection):
           'avg':
           'sum':
           'count':
+          'period':
+          'period_start':
+          'period_end':
           'duration':
           'duration_start':
           'duration_end':

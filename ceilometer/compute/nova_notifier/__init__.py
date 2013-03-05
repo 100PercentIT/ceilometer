@@ -1,8 +1,8 @@
 # -*- encoding: utf-8 -*-
 #
-# Copyright © 2012 Red Hat Inc.
+# Copyright © 2013 New Dream Network, LLC (DreamHost)
 #
-# Author: Eoghan Glynn <eglynn@redhat.com>
+# Author: Doug Hellmann <doug.hellmann@dreamhost.com>
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -16,6 +16,13 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-
-def fake_uuid(x):
-    return '%s-%s-%s-%s' % (x * 8, x * 4, x * 4, x * 12)
+# NOTE(dhellmann): The implementations of the notifier for folsom and
+# grizzly are completely different. Rather than have lots of checks
+# throughout the code, the two implementations are placed in separate
+# modules and the right version is imported here.
+try:
+    import nova.conductor
+except ImportError:
+    from .folsom import *
+else:
+    from .grizzly import *

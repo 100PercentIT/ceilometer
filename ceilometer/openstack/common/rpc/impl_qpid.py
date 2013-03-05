@@ -22,8 +22,8 @@ import uuid
 
 import eventlet
 import greenlet
+from oslo.config import cfg
 
-from ceilometer.openstack.common import cfg
 from ceilometer.openstack.common.gettextutils import _
 from ceilometer.openstack.common import importutils
 from ceilometer.openstack.common import jsonutils
@@ -51,7 +51,8 @@ qpid_opts = [
                help='Username for qpid connection'),
     cfg.StrOpt('qpid_password',
                default='',
-               help='Password for qpid connection'),
+               help='Password for qpid connection',
+               secret=True),
     cfg.StrOpt('qpid_sasl_mechanisms',
                default='',
                help='Space separated list of SASL mechanisms to use for auth'),
@@ -486,9 +487,20 @@ class Connection(object):
         """Send a 'direct' message"""
         self.publisher_send(DirectPublisher, msg_id, msg)
 
-    def topic_send(self, topic, msg):
+    def topic_send(self, topic, msg, timeout=None):
         """Send a 'topic' message"""
-        self.publisher_send(TopicPublisher, topic, msg)
+        #
+        # We want to create a message with attributes, e.g. a TTL. We
+        # don't really need to keep 'msg' in its JSON format any longer
+        # so let's create an actual qpid message here and get some
+        # value-add on the go.
+        #
+        # WARNING: Request timeout happens to be in the same units as
+        # qpid's TTL (seconds). If this changes in the future, then this
+        # will need to be altered accordingly.
+        #
+        qpid_message = qpid_messaging.Message(content=msg, ttl=timeout)
+        self.publisher_send(TopicPublisher, topic, qpid_message)
 
     def fanout_send(self, topic, msg):
         """Send a 'fanout' message"""
@@ -546,6 +558,34 @@ class Connection(object):
 
         self._register_consumer(consumer)
 
+        return consumer
+
+    def join_consumer_pool(self, callback, pool_name, topic,
+                           exchange_name=None):
+        """Register as a member of a group of consumers for a given topic from
+        the specified exchange.
+
+        Exactly one member of a given pool will receive each message.
+
+        A message will be delivered to multiple pools, if more than
+        one is created.
+        """
+        callback_wrapper = rpc_amqp.CallbackWrapper(
+            conf=self.conf,
+            callback=callback,
+            connection_pool=rpc_amqp.get_connection_pool(self.conf,
+                                                         Connection),
+        )
+        self.proxy_callbacks.append(callback_wrapper)
+
+        consumer = TopicConsumer(conf=self.conf,
+                                 session=self.session,
+                                 topic=topic,
+                                 callback=callback_wrapper,
+                                 name=pool_name,
+                                 exchange_name=exchange_name)
+
+        self._register_consumer(consumer)
         return consumer
 
 

@@ -46,28 +46,30 @@
 
 """
 
-
 import mox
 
 from tests.storage import base
-from ceilometer import storage
-from ceilometer.tests.db import TestConnection, require_map_reduce
+from ceilometer.storage.impl_test import TestConnection
+from ceilometer.tests.db import require_map_reduce
 
 
 class MongoDBEngine(base.DBEngineBase):
 
     DBNAME = 'testdb'
 
+    def tearDown(self):
+        self.conn.drop_database(self.DBNAME)
+        super(MongoDBEngine, self).tearDown()
+
     def get_connection(self):
         conf = mox.Mox().CreateMockAnything()
         conf.database_connection = 'mongodb://localhost/%s' % self.DBNAME
         self.conn = TestConnection(conf)
-        self.conn.drop_database(self.DBNAME)
         self.db = self.conn.conn[self.DBNAME]
         return self.conn
 
     def clean_up(self):
-        self.conn.drop_database(self.DBNAME)
+        self.conn.clear()
 
     def get_sources_by_project_id(self, id):
         project = self.db.project.find_one({'_id': id})

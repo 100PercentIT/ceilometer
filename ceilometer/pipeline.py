@@ -16,13 +16,13 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import itertools
 import os
 
+from oslo.config import cfg
 from stevedore import extension
 import yaml
 
-from ceilometer import extension_manager
-from ceilometer.openstack.common import cfg
 from ceilometer.openstack.common import log
 
 OPTS = [
@@ -62,6 +62,29 @@ class TransformerExtensionManager(extension.ExtensionManager):
 
     def get_ext(self, name):
         return self.by_name[name]
+
+
+class PublishContext(object):
+
+    def __init__(self, context, source, pipelines=[]):
+        self.pipelines = set(pipelines)
+        self.context = context
+        self.source = source
+
+    def add_pipelines(self, pipelines):
+        self.pipelines.update(pipelines)
+
+    def __enter__(self):
+        def p(counters):
+            for p in self.pipelines:
+                p.publish_counters(self.context,
+                                   counters,
+                                   self.source)
+        return p
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        for p in self.pipelines:
+            p.flush(self.context, self.source)
 
 
 class Pipeline(object):
@@ -170,13 +193,12 @@ class Pipeline(object):
 
         return transformers
 
-    def _publish_counter_to_one_publisher(self, ext, ctxt, counter, source):
+    def _publish_counters_to_one_publisher(self, ext, ctxt, counters, source):
         try:
-            ext.obj.publish_counter(ctxt, counter, source)
+            ext.obj.publish_counters(ctxt, counters, source)
         except Exception as err:
             LOG.warning("Pipeline %s: Continue after error "
-                        "from publisher %s for %s",
-                        self, ext.name, counter)
+                        "from publisher %s", self, ext.name)
             LOG.exception(err)
 
     def _transform_counter(self, start, ctxt, counter, source):
@@ -194,36 +216,45 @@ class Pipeline(object):
                         self, transformer, counter)
             LOG.exception(err)
 
-    def _publish_counter(self, start, ctxt, counter, source):
+    def _publish_counters(self, start, ctxt, counters, source):
         """Push counter into pipeline for publishing.
 
         param start: the first transformer that the counter will be injected.
                      This is mainly for flush() invocation that transformer
                      may emit counters
         param ctxt: execution context from the manager or service
-        param counter: counter
+        param counters: counter list
         param source: counter source
 
         """
-        LOG.audit("Pipeline %s: Transform counter %s from %s transformer",
-                  self, counter, start)
-        counter = self._transform_counter(start, ctxt, counter, source)
-        if not counter:
-            return
 
-        LOG.audit("Pipeline %s: Publish counter %s", self, counter)
+        transformed_counters = []
+        for counter in counters:
+            LOG.audit("Pipeline %s: Transform counter %s from %s transformer",
+                      self, counter, start)
+            counter = self._transform_counter(start, ctxt, counter, source)
+            if counter:
+                transformed_counters.append(counter)
+
+        LOG.audit("Pipeline %s: Publishing counters", self)
         self.publisher_manager.map(self.publishers,
-                                   self._publish_counter_to_one_publisher,
+                                   self._publish_counters_to_one_publisher,
                                    ctxt=ctxt,
-                                   counter=counter,
+                                   counters=transformed_counters,
                                    source=source,
                                    )
 
-        LOG.audit("Pipeline %s: Published counter %s", self, counter)
+        LOG.audit("Pipeline %s: Published counters", self)
 
     def publish_counter(self, ctxt, counter, source):
-        if self.support_counter(counter.name):
-            self._publish_counter(0, ctxt, counter, source)
+        self.publish_counters(ctxt, [counter], source)
+
+    def publish_counters(self, ctxt, counters, source):
+        for counter_name, counters in itertools.groupby(
+                sorted(counters, key=lambda c: c.name),
+                lambda c: c.name):
+            if self.support_counter(counter_name):
+                self._publish_counters(0, ctxt, counters, source)
 
     # (yjiang5) To support counters like instance:m1.tiny,
     # which include variable part at the end starting with ':'.
@@ -251,8 +282,16 @@ class Pipeline(object):
 
         LOG.audit("Flush pipeline %s", self)
         for (i, transformer) in enumerate(self.transformers):
-            for c in transformer.flush(ctxt, source):
-                self._publish_counter(i + 1, ctxt, c, source)
+            try:
+                self._publish_counters(i + 1, ctxt,
+                                       list(transformer.flush(ctxt, source)),
+                                       source)
+            except Exception as err:
+                LOG.warning(
+                    "Pipeline %s: Error flushing "
+                    "transformer %s",
+                    self, transformer)
+                LOG.exception(err)
 
     def get_interval(self):
         return self.interval
@@ -318,24 +357,13 @@ class PipelineManager(object):
                                    transformer_manager)
                           for pipedef in cfg]
 
-    def pipelines_for_counter(self, counter_name):
-        """Get all pipelines that support counter"""
-        return [p for p in self.pipelines if p.support_counter(counter_name)]
+    def publisher(self, context, source):
+        """Build a new Publisher for these manager pipelines.
 
-    def publish_counter(self, ctxt, counter, source):
-        """Publish counter through pipelines
-
-        This is helpful to notification mechanism, so that they don't need
-        to maintain the private mapping cache from counter to pipelines.
-
-        For polling based data collector, they may need keep private
-        mapping cache for different interval support.
-
+        :param context: The context.
+        :param source: Counter source.
         """
-        # TODO(yjiang5) Utilize a cache
-        for p in self.pipelines:
-            if p.support_counter(counter.name):
-                p.publish_counter(ctxt, counter, source)
+        return PublishContext(context, source, self.pipelines)
 
 
 def setup_pipeline(publisher_manager):

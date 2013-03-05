@@ -23,18 +23,16 @@
 import abc
 import datetime
 
+from oslo.config import cfg
+
 from ceilometer.collector import meter
 from ceilometer import counter
 from ceilometer import storage
-from ceilometer.openstack.common import cfg
 from ceilometer.tests import base as test_base
 
 
 class DBEngineBase(object):
     __metaclass__ = abc.ABCMeta
-
-    def __init__(self):
-        super(DBEngineBase, self).__init__()
 
     @abc.abstractmethod
     def get_connection(self):
@@ -64,23 +62,12 @@ class DBEngineBase(object):
 class DBTestBase(test_base.TestCase):
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, *args):
-        super(DBTestBase, self).__init__(*args)
-        self.engine = None
-        self.conn = None
-
     @classmethod
     @abc.abstractmethod
     def get_engine(cls):
         '''Return an instance of the class which implements
            the DBEngineTestBase abstract class
         '''
-        return None
-
-    def __setup_engine(self):
-        if self.engine is None:
-            self.engine = self.get_engine()
-            self.conn = self.engine.get_connection()
 
     def tearDown(self):
         self.engine.clean_up()
@@ -90,11 +77,12 @@ class DBTestBase(test_base.TestCase):
 
     def setUp(self):
         super(DBTestBase, self).setUp()
-        self.__setup_engine()
+        # TODO(jd) remove, use test_base.TestCase setUp to do that
+        self.engine = self.get_engine()
+        self.conn = self.engine.get_connection()
         self.prepare_data()
 
     def prepare_data(self):
-        #prepare the test data
         self.msgs = []
         self.counter = counter.Counter(
             'instance',
@@ -302,6 +290,10 @@ class ResourceTest(DBTestBase):
         #                  self.conn.get_resources,
         #                  metaquery=q)
 
+    def test_get_resources_by_empty_metaquery(self):
+        resources = list(self.conn.get_resources(metaquery={}))
+        self.assertTrue(len(resources) == 4)
+
 
 class MeterTest(DBTestBase):
 
@@ -327,6 +319,10 @@ class MeterTest(DBTestBase):
         except NotImplementedError:
             got_not_imp = True
             self.assertTrue(got_not_imp)
+
+    def test_get_meters_by_empty_metaquery(self):
+        results = list(self.conn.get_meters(metaquery={}))
+        self.assertTrue(len(results) == 4)
 
 
 class RawEventTest(DBTestBase):
@@ -768,12 +764,63 @@ class StatisticsTest(DBTestBase):
             user='user-5',
             meter='volume.size',
         )
-        results = self.conn.get_meter_statistics(f)
+        results = self.conn.get_meter_statistics(f)[0]
+        self.assertEqual(results['duration'],
+                         (datetime.datetime(2012, 9, 25, 12, 32)
+                          - datetime.datetime(2012, 9, 25, 10, 30)).seconds)
         assert results['count'] == 3
         assert results['min'] == 8
         assert results['max'] == 10
         assert results['sum'] == 27
         assert results['avg'] == 9
+
+    def test_no_period_in_query(self):
+        f = storage.EventFilter(
+            user='user-5',
+            meter='volume.size',
+        )
+        results = self.conn.get_meter_statistics(f)[0]
+        assert results['period'] == 0
+
+    def test_period_is_int(self):
+        f = storage.EventFilter(
+            meter='volume.size',
+        )
+        results = self.conn.get_meter_statistics(f)[0]
+        assert(isinstance(results['period'], int))
+        assert results['count'] == 6
+
+    def test_by_user_period(self):
+        f = storage.EventFilter(
+            user='user-5',
+            meter='volume.size',
+            start='2012-09-25T10:28:00',
+        )
+        results = self.conn.get_meter_statistics(f, period=7200)
+        self.assertEqual(len(results), 2)
+        self.assertEqual(set(r['period_start'] for r in results),
+                         set([datetime.datetime(2012, 9, 25, 10, 28),
+                              datetime.datetime(2012, 9, 25, 12, 28)]))
+        self.assertEqual(set(r['period_end'] for r in results),
+                         set([datetime.datetime(2012, 9, 25, 12, 28),
+                              datetime.datetime(2012, 9, 25, 14, 28)]))
+        for r in results:
+            if r['period_start'] == datetime.datetime(2012, 9, 25, 10, 0):
+                self.assertEqual(r['count'], 2)
+                self.assertEqual(r['avg'], 8.5)
+                self.assertEqual(r['min'], 8)
+                self.assertEqual(r['max'], 9)
+                self.assertEqual(r['sum'], 17)
+                self.assertEqual(r['period'], 7200)
+                self.assertEqual(isinstance(r['period'], int))
+                self.assertEqual(r['period_end'],
+                                 r['period_start']
+                                 + datetime.timedelta(seconds=7200))
+                self.assertEqual(r['duration'], 3660)
+                self.assertEqual(r['duration_start'],
+                                 datetime.datetime(2012, 9, 25, 10, 30))
+                self.assertEqual(r['duration_end'],
+                                 datetime.datetime(2012, 9, 25, 11, 31))
 
     def test_by_project(self):
         f = storage.EventFilter(
@@ -782,7 +829,8 @@ class StatisticsTest(DBTestBase):
             start='2012-09-25T11:30:00',
             end='2012-09-25T11:32:00',
         )
-        results = self.conn.get_meter_statistics(f)
+        results = self.conn.get_meter_statistics(f)[0]
+        self.assertEqual(results['duration'], 0)
         assert results['count'] == 1
         assert results['min'] == 6
         assert results['max'] == 6
@@ -794,7 +842,10 @@ class StatisticsTest(DBTestBase):
             user='user-id',
             meter='volume.size',
         )
-        results = self.conn.get_meter_statistics(f)
+        results = self.conn.get_meter_statistics(f)[0]
+        self.assertEqual(results['duration'],
+                         (datetime.datetime(2012, 9, 25, 12, 32)
+                          - datetime.datetime(2012, 9, 25, 10, 30)).seconds)
         assert results['count'] == 3
         assert results['min'] == 5
         assert results['max'] == 7

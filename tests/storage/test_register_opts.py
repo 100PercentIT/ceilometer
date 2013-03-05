@@ -18,9 +18,10 @@
 """Tests for ceilometer/storage/
 """
 
+from oslo.config import cfg
+
 from ceilometer import storage
 from ceilometer.storage import base
-from ceilometer.openstack.common import cfg
 from ceilometer.tests import base as test_base
 
 
@@ -31,7 +32,6 @@ class RegisterOpts(test_base.TestCase):
 
     def test_register_opts(self):
         self.stubs.Set(storage, 'get_engine', self.faux_get_engine)
-        cfg.CONF.metering_storage_engine = 'log'
         self._faux_engine = self.mox.CreateMock(base.StorageEngine)
         self._faux_engine.register_opts(cfg.CONF)
         self.mox.ReplayAll()

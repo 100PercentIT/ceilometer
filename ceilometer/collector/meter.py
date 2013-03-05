@@ -22,16 +22,12 @@ import hashlib
 import hmac
 import uuid
 
-from ceilometer.openstack.common import cfg
+from oslo.config import cfg
 
 METER_OPTS = [
     cfg.StrOpt('metering_secret',
                default='change this or be hacked',
                help='Secret value for signing metering messages',
-               ),
-    cfg.StrOpt('counter_source',
-               default='openstack',
-               help='Source for counters emited on this instance',
                ),
 ]
 
@@ -52,6 +48,12 @@ def recursive_keypairs(d):
         if isinstance(value, dict):
             for subname, subvalue in recursive_keypairs(value):
                 yield ('%s:%s' % (name, subname), subvalue)
+        elif isinstance(value, (tuple, list)):
+            # When doing a pair of JSON encode/decode operations to the tuple,
+            # the tuple would become list. So we have to generate the value as
+            # list here.
+            yield name, list(map(lambda x: unicode(x).encode('utf-8'),
+                                 value))
         else:
             yield name, value
 

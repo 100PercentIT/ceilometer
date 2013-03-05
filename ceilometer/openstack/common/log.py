@@ -40,7 +40,8 @@ import stat
 import sys
 import traceback
 
-from ceilometer.openstack.common import cfg
+from oslo.config import cfg
+
 from ceilometer.openstack.common.gettextutils import _
 from ceilometer.openstack.common import jsonutils
 from ceilometer.openstack.common import local
@@ -324,16 +325,11 @@ def _create_logging_excepthook(product_name):
 
 def setup(product_name):
     """Setup logging."""
-    sys.excepthook = _create_logging_excepthook(product_name)
-
     if CONF.log_config:
-        try:
-            logging.config.fileConfig(CONF.log_config)
-        except Exception:
-            traceback.print_exc()
-            raise
+        logging.config.fileConfig(CONF.log_config)
     else:
         _setup_logging_from_conf(product_name)
+    sys.excepthook = _create_logging_excepthook(product_name)
 
 
 def set_defaults(logging_context_format_string):

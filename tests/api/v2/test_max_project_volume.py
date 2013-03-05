@@ -20,10 +20,11 @@
 
 import datetime
 
+from oslo.config import cfg
+
 from ceilometer.collector import meter
 from ceilometer import counter
 
-from ceilometer.openstack.common import cfg
 from ceilometer.tests.db import require_map_reduce
 
 from .base import FunctionalTest
@@ -63,8 +64,8 @@ class TestMaxProjectVolume(FunctionalTest):
         data = self.get_json(self.PATH, q=[{'field': 'project_id',
                                             'value': 'project1',
                                             }])
-        self.assertEqual(data['max'], 7)
-        self.assertEqual(data['count'], 3)
+        self.assertEqual(data[0]['max'], 7)
+        self.assertEqual(data[0]['count'], 3)
 
     def test_start_timestamp(self):
         data = self.get_json(self.PATH, q=[{'field': 'project_id',
@@ -75,8 +76,8 @@ class TestMaxProjectVolume(FunctionalTest):
                                             'value': '2012-09-25T11:30:00',
                                             },
                                            ])
-        self.assertEqual(data['max'], 7)
-        self.assertEqual(data['count'], 2)
+        self.assertEqual(data[0]['max'], 7)
+        self.assertEqual(data[0]['count'], 2)
 
     def test_start_timestamp_after(self):
         data = self.get_json(self.PATH, q=[{'field': 'project_id',
@@ -87,8 +88,7 @@ class TestMaxProjectVolume(FunctionalTest):
                                             'value': '2012-09-25T12:34:00',
                                             },
                                            ])
-        self.assertEqual(data['max'], None)
-        self.assertEqual(data['count'], 0)
+        self.assertEqual(data, [])
 
     def test_end_timestamp(self):
         data = self.get_json(self.PATH, q=[{'field': 'project_id',
@@ -99,8 +99,8 @@ class TestMaxProjectVolume(FunctionalTest):
                                             'value': '2012-09-25T11:30:00',
                                             },
                                            ])
-        self.assertEqual(data['max'], 5)
-        self.assertEqual(data['count'], 1)
+        self.assertEqual(data[0]['max'], 5)
+        self.assertEqual(data[0]['count'], 1)
 
     def test_end_timestamp_before(self):
         data = self.get_json(self.PATH, q=[{'field': 'project_id',
@@ -111,8 +111,7 @@ class TestMaxProjectVolume(FunctionalTest):
                                             'value': '2012-09-25T09:54:00',
                                             },
                                            ])
-        self.assertEqual(data['max'], None)
-        self.assertEqual(data['count'], 0)
+        self.assertEqual(data, [])
 
     def test_start_end_timestamp(self):
         data = self.get_json(self.PATH, q=[{'field': 'project_id',
@@ -127,5 +126,5 @@ class TestMaxProjectVolume(FunctionalTest):
                                             'value': '2012-09-25T11:32:00',
                                             },
                                            ])
-        self.assertEqual(data['max'], 6)
-        self.assertEqual(data['count'], 1)
+        self.assertEqual(data[0]['max'], 6)
+        self.assertEqual(data[0]['count'], 1)

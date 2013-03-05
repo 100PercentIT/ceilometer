@@ -22,14 +22,12 @@ from datetime import datetime
 
 from mock import patch
 from mock import MagicMock
-
+from oslo.config import cfg
 from stevedore import extension
 from stevedore.tests import manager as test_manager
 
 from ceilometer.collector import meter
 from ceilometer.collector import service
-from ceilometer.openstack.common import cfg
-from ceilometer import pipeline
 from ceilometer.storage import base
 from ceilometer.tests import base as tests_base
 from ceilometer.compute import notifications
@@ -191,6 +189,7 @@ class TestCollectorService(tests_base.TestCase):
         # configuration.
         with patch('ceilometer.openstack.common.rpc.create_connection'):
             self.srv.start()
+        self.srv.pipeline_manager.pipelines[0] = MagicMock()
         self.srv.notification_manager = test_manager.TestExtensionManager(
             [extension.Extension('test',
                                  None,
@@ -199,4 +198,5 @@ class TestCollectorService(tests_base.TestCase):
                                  ),
              ])
         self.srv.process_notification(TEST_NOTICE)
-        assert self.srv.pipeline_manager.publish_counter.called
+        self.assertTrue(
+            self.srv.pipeline_manager.publisher.called)

@@ -22,10 +22,11 @@ import os
 import setuptools
 
 from ceilometer.openstack.common import setup as common_setup
-from ceilometer.version import NEXT_VERSION
 
 requires = common_setup.parse_requirements(['tools/pip-requires'])
 depend_links = common_setup.parse_dependency_links(['tools/pip-requires'])
+project = 'ceilometer'
+version = common_setup.get_version(project, '2013.1')
 
 url_base = 'http://tarballs.openstack.org/ceilometer/ceilometer-%s.tar.gz'
 
@@ -38,7 +39,7 @@ def directories(target_dir):
 setuptools.setup(
 
     name='ceilometer',
-    version=NEXT_VERSION,
+    version=version,
 
     description='cloud computing metering',
 
@@ -46,7 +47,7 @@ setuptools.setup(
     author_email='ceilometer@lists.launchpad.net',
 
     url='https://launchpad.net/ceilometer',
-    download_url=url_base % NEXT_VERSION,
+    download_url=url_base % version,
 
     classifiers=[
         'Development Status :: 3 - Alpha',
@@ -69,6 +70,7 @@ setuptools.setup(
         directories("ceilometer/api/static")
         + directories("ceilometer/api/templates"),
     },
+    exclude_package_data={'': ['tests/*']},
     include_package_data=True,
 
     test_suite='nose.collector',
@@ -90,6 +92,7 @@ setuptools.setup(
     [ceilometer.collector]
     instance = ceilometer.compute.notifications:Instance
     instance_flavor = ceilometer.compute.notifications:InstanceFlavor
+    instance_delete = ceilometer.compute.notifications:InstanceDelete
     memory = ceilometer.compute.notifications:Memory
     vcpus = ceilometer.compute.notifications:VCpus
     disk_root_size = ceilometer.compute.notifications:RootDiskSize
@@ -126,11 +129,13 @@ setuptools.setup(
     postgresql = ceilometer.storage.impl_sqlalchemy:SQLAlchemyStorage
     sqlite = ceilometer.storage.impl_sqlalchemy:SQLAlchemyStorage
     test = ceilometer.storage.impl_test:TestDBStorage
+    hbase = ceilometer.storage.impl_hbase:HBaseStorage
 
     [ceilometer.compute.virt]
     libvirt = ceilometer.compute.virt.libvirt.inspector:LibvirtInspector
 
     [ceilometer.transformer]
+    accumulator = ceilometer.transformer.accumulator:TransformerAccumulator
 
     [ceilometer.publisher]
     meter_publisher = ceilometer.publisher.meter_publish:MeterPublisher

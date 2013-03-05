@@ -23,17 +23,13 @@ import os
 import urllib
 
 import flask
+from oslo.config import cfg
 from pecan import set_config
 from pecan.testing import load_test_app
-
-import mox
-import stubout
 
 from ceilometer import storage
 from ceilometer.api.v1 import app as v1_app
 from ceilometer.api.v1 import blueprint as v1_blueprint
-from ceilometer.api.controllers import v2
-from ceilometer.openstack.common import cfg
 from ceilometer.tests import db as db_test_base
 from ceilometer.tests import base
 
@@ -70,14 +66,12 @@ class TestBase(db_test_base.TestBase):
         return rv
 
 
-class FunctionalTest(base.TestCase):
+class FunctionalTest(db_test_base.TestBase):
     """
     Used for functional tests of Pecan controllers where you need to
     test your literal application and its integration with the
     framework.
     """
-
-    DBNAME = 'testdb'
 
     PATH_PREFIX = ''
 
@@ -85,14 +79,6 @@ class FunctionalTest(base.TestCase):
 
     def setUp(self):
         super(FunctionalTest, self).setUp()
-
-        cfg.CONF.database_connection = 'test://localhost/%s' % self.DBNAME
-        self.conn = storage.get_connection(cfg.CONF)
-        # Don't want to use drop_database() because we
-        # may end up running out of spidermonkey instances.
-        # http://davisp.lighthouseapp.com/projects/26898/tickets/22
-        self.conn.conn[self.DBNAME].clear()
-
         self.app = self._make_app()
 
     def _make_app(self, enable_acl=False):
