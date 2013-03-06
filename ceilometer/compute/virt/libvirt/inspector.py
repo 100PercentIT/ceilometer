@@ -102,9 +102,11 @@ class LibvirtInspector(virt_inspector.Inspector):
 
     def inspect_mem(self, instance_name):
         domain = self._lookup_by_name(instance_name)
-        ifconfig_proc = subprocess.Popen(['sudo virsh qemu-monitor-command ' + instance_name + ' \'{ "execute": "qom-get", "arguments": { "path": "/machine/peripheral/balloon0", "property": "guest-stats" } }\'' ],                                                                                             bufsize=-1, stdout=subprocess.PIPE, shell=True)
-        stdout, _ = ifconfig_proc.communicate()
-        if ifconfig_proc.returncode == 0:
+        enable_proc = subprocess.Popen(['sudo virsh qemu-monitor-command ' + instance_name + ' \'{ "execute": "qom-set", "arguments": { "path": "/machine/peripheral/balloon0", "property": "guest-stats-polling-interval", "value": 2 } }\'' ], bufsize=-1, stdout=subprocess.PIPE, shell=True)
+        stdout, _ = enable_proc.communicate()
+        mem_proc = subprocess.Popen(['sudo virsh qemu-monitor-command ' + instance_name + ' \'{ "execute": "qom-get", "arguments": { "path": "/machine/peripheral/balloon0", "property": "guest-stats" } }\'' ], bufsize=-1, stdout=subprocess.PIPE, shell=True)
+        stdout, _ = mem_proc.communicate()
+        if mem_proc.returncode == 0:
             return stdout
 
     def inspect_cpus(self, instance_name):
