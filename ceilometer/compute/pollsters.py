@@ -215,7 +215,11 @@ class MEMPollster(plugin.ComputePollster):
             timestamp=timeutils.isotime(),
             resource_metadata={}
         )
-
+        
+    @staticmethod
+    def get_counter_names():
+        return ['memory.free']
+                
     def get_counters(self, manager, instance):
         self.LOG.info('checking instance %s', instance.id)
         instance_name = _instance_name(instance)
