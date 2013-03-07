@@ -7,7 +7,7 @@ from ceilometer.central import plugin
 from quantumclient.v2_0 import client as quantum_client
 
 from keystoneclient.v2_0 import client as ksclient
-from ceilometer.openstack.common import cfg
+from oslo.config import cfg
 
 import os, subprocess, sys, csv, datetime
 
